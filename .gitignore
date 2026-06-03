@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# env files (NEVER commit)
+.env
+.env.local
+.env.*.local
+
+# debug / logs
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Prisma
+prisma/migrations/dev/
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts

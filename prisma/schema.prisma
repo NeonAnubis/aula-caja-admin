@@ -1,0 +1,290 @@
+// Aula Caja . POS escolar . Prisma schema
+//
+// Modela el POS de tienda escolar (Yurico/Mexico). Auth la maneja Supabase
+// (auth.users), mirroreado a public.profiles via trigger. Prisma se usa para
+// todas las consultas de negocio.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["public"]
+}
+
+// =====================================================================
+//                          USUARIOS / PROFILES
+// =====================================================================
+
+model Profile {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  fullName  String?  @map("full_name")
+  role      UserRole @default(CASHIER)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt        @map("updated_at")
+
+  sales             Sale[]             @relation("cashier")
+  recharges         Recharge[]         @relation("recordedBy")
+  treasuryEntries   TreasuryMovement[] @relation("createdBy")
+  receivedOrders    PurchaseOrder[]    @relation("receivedBy")
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+enum UserRole {
+  ADMIN
+  CASHIER
+  PARENT
+
+  @@schema("public")
+}
+
+// =====================================================================
+//                              ALUMNOS
+// =====================================================================
+
+model Student {
+  id            String   @id @default(cuid())
+  matricula     String   @unique
+  fullName      String   @map("full_name")
+  grade         String
+  guardianName  String?  @map("guardian_name")
+  guardianEmail String?  @map("guardian_email")
+  guardianPhone String?  @map("guardian_phone")
+  qrCode        String   @unique @map("qr_code")
+  balanceCents  Int      @default(0) @map("balance_cents")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt        @map("updated_at")
+
+  sales     Sale[]
+  recharges Recharge[]
+
+  @@index([balanceCents])
+  @@index([active])
+  @@map("students")
+  @@schema("public")
+}
+
+// =====================================================================
+//                              PRODUCTOS
+// =====================================================================
+
+model Product {
+  id         String   @id @default(cuid())
+  sku        String   @unique
+  name       String
+  category   String
+  priceCents Int      @map("price_cents")
+  stock      Int      @default(0)
+  stockMin   Int      @default(0) @map("stock_min")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt        @map("updated_at")
+
+  saleItems     SaleItem[]
+  purchaseItems PurchaseOrderItem[]
+
+  @@index([category])
+  @@index([active])
+  @@map("products")
+  @@schema("public")
+}
+
+// =====================================================================
+//                                VENTAS
+// =====================================================================
+
+model Sale {
+  id            String        @id @default(cuid())
+  folio         String        @unique
+  studentId     String?       @map("student_id")
+  cashierId     String        @db.Uuid @map("cashier_id")
+  subtotalCents Int           @map("subtotal_cents")
+  discountCents Int           @default(0) @map("discount_cents")
+  totalCents    Int           @map("total_cents")
+  paymentMethod PaymentMethod @map("payment_method")
+  status        SaleStatus    @default(COMPLETED)
+  notes         String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  student Student?   @relation(fields: [studentId], references: [id])
+  cashier Profile    @relation("cashier", fields: [cashierId], references: [id])
+  items   SaleItem[]
+
+  @@index([createdAt])
+  @@index([cashierId])
+  @@index([studentId])
+  @@map("sales")
+  @@schema("public")
+}
+
+model SaleItem {
+  id          String @id @default(cuid())
+  saleId      String @map("sale_id")
+  productId   String @map("product_id")
+  productName String @map("product_name")
+  quantity    Int
+  priceCents  Int    @map("price_cents")
+  totalCents  Int    @map("total_cents")
+
+  sale    Sale    @relation(fields: [saleId],    references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@map("sale_items")
+  @@schema("public")
+}
+
+enum PaymentMethod {
+  BALANCE
+  CASH
+  CARD
+
+  @@schema("public")
+}
+
+enum SaleStatus {
+  COMPLETED
+  REFUNDED
+  VOIDED
+
+  @@schema("public")
+}
+
+// =====================================================================
+//                              RECARGAS
+// =====================================================================
+
+model Recharge {
+  id           String         @id @default(cuid())
+  folio        String         @unique
+  studentId    String         @map("student_id")
+  amountCents  Int            @map("amount_cents")
+  method       RechargeMethod
+  reference    String?
+  recordedById String         @db.Uuid @map("recorded_by_id")
+  notes        String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  student    Student @relation(fields: [studentId],    references: [id])
+  recordedBy Profile @relation("recordedBy", fields: [recordedById], references: [id])
+
+  @@index([studentId])
+  @@index([createdAt])
+  @@map("recharges")
+  @@schema("public")
+}
+
+enum RechargeMethod {
+  CASH
+  OXXO
+  SPEI
+  CARD
+  MERCADO_PAGO
+  MANUAL_ADJUSTMENT
+
+  @@schema("public")
+}
+
+// =====================================================================
+//                              TESORERIA
+// =====================================================================
+
+model TreasuryMovement {
+  id          String       @id @default(cuid())
+  type        MovementType
+  amountCents Int          @map("amount_cents")
+  account     String
+  concept     String
+  reference   String?
+  createdById String       @db.Uuid @map("created_by_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  createdBy Profile @relation("createdBy", fields: [createdById], references: [id])
+
+  @@index([createdAt])
+  @@index([account])
+  @@map("treasury_movements")
+  @@schema("public")
+}
+
+enum MovementType {
+  INCOME
+  EXPENSE
+
+  @@schema("public")
+}
+
+// =====================================================================
+//                              COMPRAS
+// =====================================================================
+
+model Supplier {
+  id          String   @id @default(cuid())
+  rfc         String   @unique
+  legalName   String   @map("legal_name")
+  contactName String?  @map("contact_name")
+  phone       String?
+  email       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  orders PurchaseOrder[]
+
+  @@map("suppliers")
+  @@schema("public")
+}
+
+model PurchaseOrder {
+  id           String              @id @default(cuid())
+  folio        String              @unique
+  supplierId   String              @map("supplier_id")
+  totalCents   Int                 @map("total_cents")
+  status       PurchaseOrderStatus @default(PENDING)
+  notes        String?
+  receivedById String?             @db.Uuid @map("received_by_id")
+  receivedAt   DateTime?           @map("received_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  supplier   Supplier            @relation(fields: [supplierId],   references: [id])
+  receivedBy Profile?            @relation("receivedBy", fields: [receivedById], references: [id])
+  items      PurchaseOrderItem[]
+
+  @@index([status])
+  @@map("purchase_orders")
+  @@schema("public")
+}
+
+model PurchaseOrderItem {
+  id            String @id @default(cuid())
+  orderId       String @map("order_id")
+  productId     String @map("product_id")
+  productName   String @map("product_name")
+  quantity      Int
+  unitCostCents Int    @map("unit_cost_cents")
+  totalCents    Int    @map("total_cents")
+
+  order   PurchaseOrder @relation(fields: [orderId],   references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+  @@schema("public")
+}
+
+enum PurchaseOrderStatus {
+  PENDING
+  IN_TRANSIT
+  RECEIVED
+  PAID
+  CANCELLED
+
+  @@schema("public")
+}

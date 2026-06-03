@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-feature-settings: "ss01", "cv11";
+  }
+  body {
+    @apply bg-white text-ink-900 antialiased font-sans;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { @apply bg-brand-100 text-brand-900; }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50 ring-offset-2 ring-offset-white rounded-md;
+  }
+}
+
+/* =============================================================
+   GLASS UTILITIES . monochrome white / black / blue only
+   ============================================================= */
+@layer components {
+  /* Used on light backgrounds */
+  .glass {
+    background: rgba(255, 255, 255, 0.60);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.6) inset,
+      0 8px 24px rgba(10, 10, 10, 0.05);
+  }
+  /* Used on photographic / dark backgrounds */
+  .glass-frost {
+    background: rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
+  }
+  /* Dark glass for use on light surfaces */
+  .glass-dark {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+  }
+  /* Blue-tinted glass */
+  .glass-blue {
+    background: rgba(37, 99, 235, 0.12);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid rgba(37, 99, 235, 0.20);
+  }
+
+  /* Hairline divider used as section meta */
+  .hairline {
+    position: relative;
+  }
+  .hairline::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 32px;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.4;
+  }
+  .hairline > * { padding-left: 44px; }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .scrollbar-hidden { scrollbar-width: none; }
+  .scrollbar-hidden::-webkit-scrollbar { display: none; }
+
+  /* Crisp 1px dot grid . monochrome */
+  .bg-dot-grid {
+    background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .bg-dot-grid-dark {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
