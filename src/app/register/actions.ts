@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getAppUrl } from "@/lib/utils";
+import { getRequestOrigin } from "@/lib/url";
 
 export type RegisterState =
   | { ok: true; email: string; needsConfirmation: boolean }
@@ -69,7 +69,7 @@ export async function signUpWithPassword(
     email,
     password,
     options: {
-      emailRedirectTo: `${getAppUrl()}/auth/callback?next=/dashboard`,
+      emailRedirectTo: `${getRequestOrigin()}/auth/callback?next=/dashboard`,
       data: { full_name: fullName }
     }
   });
@@ -105,7 +105,7 @@ export async function resendConfirmation(formData: FormData) {
   const { error } = await supabase.auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: `${getAppUrl()}/auth/callback?next=/dashboard` }
+    options: { emailRedirectTo: `${getRequestOrigin()}/auth/callback?next=/dashboard` }
   });
   if (error) {
     redirect(
