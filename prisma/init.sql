@@ -332,3 +332,152 @@ begin
   return v_recharge_id;
 end;
 $$;
+
+-- ---------------------------------------------------------------------
+--  Atomic refund flow (reverse a completed sale)
+--  Restores stock, credits student balance (if BALANCE),
+--  marks the sale as REFUNDED and writes a compensating treasury
+--  movement so financial reports stay correct.
+-- ---------------------------------------------------------------------
+create or replace function public.record_refund(
+  p_sale_id    text,
+  p_cashier_id uuid,
+  p_reason     text default null
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale        record;
+  v_item        record;
+  v_treasury_id text := concat('tm_', gen_random_uuid()::text);
+begin
+  -- Lock the sale; raise if it doesn't exist or is not refundable.
+  select * into v_sale from public.sales where id = p_sale_id for update;
+  if not found then
+    raise exception 'sale_not_found' using errcode = '23503';
+  end if;
+  if v_sale.status <> 'COMPLETED' then
+    raise exception 'sale_not_refundable:%', v_sale.status using errcode = '23514';
+  end if;
+
+  -- Restore stock for every line item.
+  for v_item in select * from public.sale_items where sale_id = p_sale_id
+  loop
+    update public.products
+       set stock      = stock + v_item.quantity,
+           updated_at = now()
+     where id = v_item.product_id;
+  end loop;
+
+  -- Credit the student's balance back when the sale was paid with saldo.
+  if v_sale.payment_method = 'BALANCE' and v_sale.student_id is not null then
+    update public.students
+       set balance_cents = balance_cents + v_sale.total_cents,
+           updated_at    = now()
+     where id = v_sale.student_id;
+  end if;
+
+  -- Mark sale as refunded and append the reason to notes.
+  update public.sales
+     set status = 'REFUNDED',
+         notes  = case
+                    when p_reason is not null
+                      then trim(both ' ' from concat(coalesce(notes, ''), ' | Refund: ', p_reason))
+                    else notes
+                  end
+   where id = p_sale_id;
+
+  -- Compensating treasury entry: an EXPENSE that offsets the original INCOME.
+  insert into public.treasury_movements (
+    id, type, amount_cents, account, concept, reference, created_by_id, created_at
+  ) values (
+    v_treasury_id,
+    'EXPENSE',
+    v_sale.total_cents,
+    case v_sale.payment_method
+      when 'BALANCE' then 'Saldo prepagado'
+      when 'CASH'    then 'Caja chica'
+      when 'CARD'    then 'Conekta'
+    end,
+    concat(
+      'Devolución venta ', v_sale.folio,
+      case when p_reason is not null then concat(' . ', p_reason) else '' end
+    ),
+    v_sale.folio,
+    p_cashier_id,
+    now()
+  );
+
+  return v_sale.folio;
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+--  Tutor portal . parent ↔ student links table is created by Prisma.
+--  RLS for parent-side reads.
+-- ---------------------------------------------------------------------
+do $body$
+begin
+  if exists (select 1 from information_schema.tables
+              where table_schema = 'public'
+                and table_name   = 'parent_student_links') then
+    execute 'alter table public.parent_student_links enable row level security';
+
+    execute 'drop policy if exists "psl_parent_read" on public.parent_student_links';
+    execute 'create policy "psl_parent_read"
+               on public.parent_student_links for select
+               using (parent_id = auth.uid())';
+
+    execute 'drop policy if exists "psl_staff_read" on public.parent_student_links';
+    execute 'create policy "psl_staff_read"
+               on public.parent_student_links for select
+               using (public.current_user_role() in (''ADMIN'', ''CASHIER''))';
+  end if;
+end
+$body$;
+
+-- ---------------------------------------------------------------------
+--  Tutor portal . allow parents to read their linked students + recharges
+-- ---------------------------------------------------------------------
+do $body$
+begin
+  -- A parent can SELECT a student row if a link to it exists.
+  if exists (select 1 from information_schema.tables
+              where table_schema = 'public' and table_name = 'students') then
+    execute 'drop policy if exists "students_parent_read" on public.students';
+    execute 'create policy "students_parent_read"
+               on public.students for select
+               using (exists (
+                 select 1 from public.parent_student_links psl
+                  where psl.student_id = id and psl.parent_id = auth.uid()
+               ))';
+  end if;
+
+  if exists (select 1 from information_schema.tables
+              where table_schema = 'public' and table_name = 'recharges') then
+    execute 'drop policy if exists "recharges_parent_read" on public.recharges';
+    execute 'create policy "recharges_parent_read"
+               on public.recharges for select
+               using (exists (
+                 select 1 from public.parent_student_links psl
+                  where psl.student_id = recharges.student_id
+                    and psl.parent_id  = auth.uid()
+               ))';
+  end if;
+
+  if exists (select 1 from information_schema.tables
+              where table_schema = 'public' and table_name = 'sales') then
+    execute 'drop policy if exists "sales_parent_read" on public.sales';
+    execute 'create policy "sales_parent_read"
+               on public.sales for select
+               using (exists (
+                 select 1 from public.parent_student_links psl
+                  where psl.student_id = sales.student_id
+                    and psl.parent_id  = auth.uid()
+               ))';
+  end if;
+end
+$body$;

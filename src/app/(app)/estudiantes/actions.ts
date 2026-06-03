@@ -3,14 +3,32 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { generateLinkCode } from "@/lib/codes";
 
 export type CreateStudentState =
-  | { ok: true; id: string }
+  | { ok: true; id: string; linkCode: string }
   | { ok: false; error: string }
   | null;
 
 function slugQr(matricula: string) {
   return `QR-${matricula.replace(/\W+/g, "").toUpperCase()}`;
+}
+
+/**
+ * Generate a link code that doesn't collide with anything already in the
+ * database. Retry a few times on the extremely unlikely collision before
+ * giving up.
+ */
+async function uniqueLinkCode(maxAttempts = 5): Promise<string> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const candidate = generateLinkCode();
+    const taken = await prisma.student.findUnique({
+      where: { linkCode: candidate },
+      select: { id: true }
+    });
+    if (!taken) return candidate;
+  }
+  throw new Error("Could not generate a unique link code");
 }
 
 export async function createStudent(
@@ -31,6 +49,7 @@ export async function createStudent(
   }
 
   try {
+    const linkCode = await uniqueLinkCode();
     const s = await prisma.student.create({
       data: {
         matricula,
@@ -40,11 +59,12 @@ export async function createStudent(
         guardianEmail,
         guardianPhone,
         qrCode: slugQr(matricula),
+        linkCode,
         balanceCents: 0
       }
     });
     revalidatePath("/estudiantes");
-    return { ok: true, id: s.id };
+    return { ok: true, id: s.id, linkCode };
   } catch (e: any) {
     if (String(e?.code) === "P2002") {
       return { ok: false, error: "Esa matrícula ya existe." };

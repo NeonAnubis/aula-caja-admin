@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { mxn, dateShort } from "@/lib/format";
 import { NewStudentForm } from "./new-student-form";
+import { CopyCode } from "./copy-code";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Estudiantes . Aula Caja" };
@@ -80,6 +81,7 @@ export default async function StudentsPage({
               <th className="px-4 py-3 text-left font-semibold">Alumno</th>
               <th className="px-4 py-3 text-left font-semibold">Grado</th>
               <th className="px-4 py-3 text-left font-semibold">Tutor</th>
+              <th className="px-4 py-3 text-left font-semibold">Código tutor</th>
               <th className="px-4 py-3 text-right font-semibold">Saldo</th>
               <th className="px-4 py-3 text-left font-semibold">Alta</th>
             </tr>
@@ -87,7 +89,7 @@ export default async function StudentsPage({
           <tbody className="divide-y divide-ink-100">
             {students.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-ink-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-ink-400">
                   {q
                     ? "No se encontró ningún alumno con esos criterios."
                     : "Aún no hay alumnos. Crea el primero arriba."}
@@ -107,6 +109,9 @@ export default async function StudentsPage({
                 </td>
                 <td className="px-4 py-3 text-ink-700">{s.grade}</td>
                 <td className="px-4 py-3 text-ink-700">{s.guardianName ?? "—"}</td>
+                <td className="px-4 py-3">
+                  <CopyCode code={s.linkCode} />
+                </td>
                 <td className="px-4 py-3 text-right">
                   <span
                     className={

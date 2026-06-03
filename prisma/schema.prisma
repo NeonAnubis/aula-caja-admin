@@ -29,10 +29,12 @@ model Profile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt        @map("updated_at")
 
-  sales             Sale[]             @relation("cashier")
-  recharges         Recharge[]         @relation("recordedBy")
-  treasuryEntries   TreasuryMovement[] @relation("createdBy")
-  receivedOrders    PurchaseOrder[]    @relation("receivedBy")
+  sales             Sale[]              @relation("cashier")
+  recharges         Recharge[]          @relation("recordedBy")
+  treasuryEntries   TreasuryMovement[]  @relation("createdBy")
+  receivedOrders    PurchaseOrder[]     @relation("receivedBy")
+  // Students linked to this profile when the role is PARENT.
+  linkedStudents    ParentStudentLink[] @relation("parent")
 
   @@map("profiles")
   @@schema("public")
@@ -59,6 +61,9 @@ model Student {
   guardianEmail String?  @map("guardian_email")
   guardianPhone String?  @map("guardian_phone")
   qrCode        String   @unique @map("qr_code")
+  // Human-readable short code that parents enter to link a student
+  // to their tutor account. Generated server-side (see lib/codes.ts).
+  linkCode      String   @unique @map("link_code")
   balanceCents  Int      @default(0) @map("balance_cents")
   active        Boolean  @default(true)
   createdAt     DateTime @default(now()) @map("created_at")
@@ -66,10 +71,36 @@ model Student {
 
   sales     Sale[]
   recharges Recharge[]
+  parents   ParentStudentLink[]
 
   @@index([balanceCents])
   @@index([active])
   @@map("students")
+  @@schema("public")
+}
+
+// =====================================================================
+//                          PARENT ↔ STUDENT LINKS
+// =====================================================================
+//
+// A tutor (Profile with role = PARENT) can link to one or more students
+// by entering the student's `linkCode`. The school administration prints
+// or shares the code with the family. The link is also visible to staff
+// (ADMIN, CASHIER) for support.
+
+model ParentStudentLink {
+  id        String   @id @default(cuid())
+  parentId  String   @db.Uuid @map("parent_id")
+  studentId String   @map("student_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  parent  Profile @relation("parent", fields: [parentId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@index([parentId])
+  @@index([studentId])
+  @@map("parent_student_links")
   @@schema("public")
 }
 
